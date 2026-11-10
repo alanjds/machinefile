@@ -1,0 +1,23 @@
+FROM ubuntu:26.04
+ARG USERNAME=ubuntu
+
+RUN apt-get update && apt-get install -y git curl ripgrep fd-find \
+    htop tmux \
+    && apt-get clean
+
+RUN echo "deb http://packages.example.com/repo stable main" > /etc/apt/sources.list.d/example.list && curl -fsSL https://example.com/key.gpg -o /tmp/k.gpg && mv /tmp/k.gpg /etc/apt/trusted.gpg.d/example.gpg
+
+ENV PATH=/opt/tools/bin:$PATH
+ENV APP_HOME=/srv/app
+
+WORKDIR /srv/app
+RUN git clone https://github.com/example/app .
+
+COPY config/90-brightness.conf /etc/udev/rules.d/90-brightness.conf
+ADD https://example.com/install.sh /usr/local/bin/install.sh
+RUN chmod +x /usr/local/bin/install.sh
+
+USER $USERNAME
+RUN curl -fsSL https://get.example-cli.sh | sh
+USER root
+RUN systemctl enable fstrim.timer

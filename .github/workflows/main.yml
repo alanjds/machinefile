@@ -1,0 +1,29 @@
+name: CI
+
+# Allows you to run this workflow manually from the Actions tab
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 6
+      matrix:
+        python-version: ["3.13", "3.14", "3.15"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+    - name: Test with pytest
+      # the suite executes real ansible-playbook passes (dev group);
+      # UV_PYTHON pins the project venv to the matrix interpreter, else
+      # uv drifts to the newest (ansible-core breaks on 3.15)
+      env:
+        UV_PYTHON: ${{ matrix.python-version }}
+      run: uv run --group dev pytest tests/
+    - name: Smoke-test against Python ${{ matrix.python-version }}
+      env:
+        PYTHONPATH: src
+      run: uv run --python ${{ matrix.python-version }} --no-project --with pyyaml --with rich-click python -c "import machinefile.cli"

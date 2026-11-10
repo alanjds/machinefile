@@ -1,0 +1,5 @@
+#!/usr/bin/env -S uvx --index https://test.pypi.org/simple --index-strategy unsafe-best-match --from machinefile[ansible] machine
+FROM ubuntu
+RUN echo hello > /tmp/hello
+RUN wc -c < /tmp/hello
+RUN cat /tmp/hello

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.ansible.yaml
+.pytest_cache/
+__pycache__/
+*.egg-info/
+dist/
+gmon.out
+machinefile.cloudinit.yaml
+build/
+.hermes/
