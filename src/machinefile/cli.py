@@ -18,7 +18,8 @@ import click
 import rich_click as rc
 
 from .runner_ansible import (ansible_env, build_ansible_command,
-                             compile_tasks, find_ansible, remove_stamps,
+                             compile_tasks, find_ansible,
+                             needs_become_password, remove_stamps,
                              render_playbook, run_command)
 
 
@@ -90,6 +91,9 @@ def plan_cmd(
            default=None, help="Build context (default: Machinefile's dir).")
 @rc.option("--arg", "build_args", multiple=True, metavar="K=V",
            help="Override ARG values (repeatable).")
+@rc.option("--no-ask-become-pass", "ask_become_pass", flag_value=False,
+           default=True,
+           help="Never probe sudo / prompt for the become password.")
 @verbose_opt
 @rc.argument("ansible_args", nargs=-1, type=click.UNPROCESSED)
 def apply_cmd(
@@ -97,6 +101,7 @@ def apply_cmd(
     target: str | None,
     context: Path | None,
     build_args: tuple[str, ...],
+    ask_become_pass: bool,
     verbose: int,
     ansible_args: tuple[str, ...],
 ):
@@ -126,8 +131,13 @@ def apply_cmd(
     text, _ = render_playbook(tasks, comments, machinefile)
     plan_path = machinefile.parent / (machinefile.name + ".ansible.yaml")
     plan_path.write_text(text)
+    # become: true is always compiled in; on boxes without NOPASSWD
+    # ansible needs to be told to ask (TTY + failed sudo -n probe, see
+    # needs_become_password). reset already escalates via sudo.
+    ask = ask_become_pass and needs_become_password(list(ansible_args),
+                                                    target)
     cmd = build_ansible_command(ansible, plan_path, target, verbose,
-                                list(ansible_args))
+                                list(ansible_args), ask)
     rc.echo(f"$ {' '.join(cmd)}", err=True)
     sys.exit(run_command(cmd, ansible_env(verbose)))
 

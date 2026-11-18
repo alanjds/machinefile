@@ -312,13 +312,51 @@ def run_command(cmd: list[str], env: dict[str, str] | None = None) -> int:
     return subprocess.call(cmd, env=env)
 
 
+def needs_become_password(ansible_args: list[str],
+                          target: str | None) -> bool:
+    """Will become need a password the user must type? (probes sudo)
+
+    The playbook always carries `become: true`, so sudo must work: on a
+    box without NOPASSWD, ansible fails at the first task unless asked
+    for the password (--ask-become-pass). Only probe when the answer can
+    change the run: root never needs a password, and without a TTY there
+    is nobody to type one (CI/cron keep the fail-fast behavior). If the
+    passthrough already arranges a password, stay out of it.
+    """
+    for arg in ansible_args:
+        if ("ansible_become_pass=" in arg
+                or arg.startswith("--ask-become-pass")
+                or arg.startswith("--become-password-file")
+                or (arg.startswith("-") and not arg.startswith("--")
+                    and "K" in arg)):
+            return False
+    if os.geteuid() == 0 or not sys.stdin.isatty():
+        return False
+    # `sudo -n`: succeed or fail fast, never prompt. Remotely, BatchMode
+    # keeps ssh itself from prompting; ssh's own failure (exit 255: auth,
+    # unreachable) says nothing about sudo, so leave it alone and let
+    # ansible surface the ssh error.
+    if target:
+        rc = subprocess.call(["ssh", "-o", "BatchMode=yes", target,
+                              "sudo -n true"],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        return rc not in (0, 255)
+    return subprocess.call(["sudo", "-n", "true"],
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL) != 0
+
+
 def build_ansible_command(ansible: str, plan_path: Path, target: str | None,
-                          verbose: int, ansible_args: list[str]) -> list[str]:
+                          verbose: int, ansible_args: list[str],
+                          ask_become_pass: bool = False) -> list[str]:
     cmd = [ansible, str(plan_path)]
     if target:
         cmd += ["-i", f"{target},"]
     else:
         cmd += ["-i", "localhost,", "--connection", "local"]
+    if ask_become_pass:
+        cmd.append("--ask-become-pass")
     cmd += ["-" + "v" * verbose] if verbose else []
     cmd += ansible_args
     return cmd

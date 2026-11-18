@@ -15,8 +15,11 @@ import re
 import subprocess
 import yaml
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+from machinefile import runner_ansible
 
 ROOT = Path(__file__).resolve().parent.parent
 BASIC = ROOT / "examples" / "basic" / "Machinefile"
@@ -373,6 +376,66 @@ class TestAnsibleExecution:
         r2 = run_playbook(plan(wf), tmp_path)
         assert r2.returncode == 0, r2.stdout + r2.stderr
         assert (tmp_path / "ctx" / "opt" / "d.txt").read_text().strip() == "done"
+
+
+class TestBecomePasswordProbe:
+    """apply must add --ask-become-pass exactly when become needs a
+    password the user can type (no NOPASSWD + TTY + nobody handled it)."""
+
+    def probe(self, monkeypatch, rc, tty=True, euid=1000):
+        calls = []
+        monkeypatch.setattr(runner_ansible.os, "geteuid", lambda: euid)
+        monkeypatch.setattr(runner_ansible.sys, "stdin",
+                            SimpleNamespace(isatty=lambda: tty))
+
+        def fake_call(cmd, **kw):
+            calls.append(cmd)
+            return rc
+
+        monkeypatch.setattr(runner_ansible.subprocess, "call", fake_call)
+        return calls
+
+    def test_local_passwordless_adds_nothing(self, monkeypatch):
+        calls = self.probe(monkeypatch, rc=0)
+        assert not runner_ansible.needs_become_password([], None)
+        assert calls == [["sudo", "-n", "true"]]
+
+    def test_local_password_prompted_on_tty(self, monkeypatch):
+        self.probe(monkeypatch, rc=1)
+        assert runner_ansible.needs_become_password([], None)
+
+    def test_no_tty_no_root_never_probes(self, monkeypatch):
+        calls = self.probe(monkeypatch, rc=1, tty=False)
+        assert not runner_ansible.needs_become_password([], None)
+        calls = self.probe(monkeypatch, rc=1, euid=0)
+        assert not runner_ansible.needs_become_password([], None)
+        assert calls == []
+
+    def test_passthrough_password_suppresses_probe(self, monkeypatch):
+        for args in (["-K"], ["-Kv"], ["--ask-become-pass"],
+                     ["--become-password-file=p"],
+                     ["-e", "ansible_become_pass=x"]):
+            calls = self.probe(monkeypatch, rc=1)
+            assert not runner_ansible.needs_become_password(args, None), args
+            assert calls == []
+
+    def test_remote_probe_batchmode_and_ssh_failure(self, monkeypatch):
+        calls = self.probe(monkeypatch, rc=1)
+        assert runner_ansible.needs_become_password([], "user@host")
+        assert calls[0][:4] == ["ssh", "-o", "BatchMode=yes", "user@host"]
+        # ssh itself failing (255) says nothing about remote sudo
+        self.probe(monkeypatch, rc=255)
+        assert not runner_ansible.needs_become_password([], "user@host")
+        self.probe(monkeypatch, rc=0)
+        assert not runner_ansible.needs_become_password([], "user@host")
+
+    def test_build_command_flag(self, tmp_path):
+        base = runner_ansible.build_ansible_command(
+            "ansible-playbook", tmp_path / "p.yaml", None, 0, [])
+        assert "--ask-become-pass" not in base
+        asked = runner_ansible.build_ansible_command(
+            "ansible-playbook", tmp_path / "p.yaml", None, 0, [], True)
+        assert "--ask-become-pass" in asked
 
 
 class TestCLI:

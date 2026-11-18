@@ -34,6 +34,9 @@ Install the command permanently (optional):
     machine apply Machinefile -v             # show task output (-vv, -vvv…)
     machine apply Machinefile -- --check     # passthrough to ansible-playbook
 
+apply probes `sudo -n`: without NOPASSWD it prompts for the become password
+on a TTY (root/passwordless/CI unaffected; `--no-ask-become-pass` opts out).
+
 Re-apply resumes at your edit: unchanged layers skip, appended layers run
 alone, a failed layer retries with its upstream still skipped. That is the
 hash chain (`sha256(parent + layer)`, markers in `/var/lib/machinefile/`),
