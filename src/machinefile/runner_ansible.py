@@ -3,7 +3,7 @@
 Mapping (Dockerfile instruction -> playbook task):
     RUN  <cmd>      -> ansible.builtin.shell (stamp pair); heredocs pass
                        verbatim in a YAML block scalar; env + chdir per task
-    COPY file       -> ansible.builtin.copy with checksum: (drift-aware)
+    COPY file       -> ansible.builtin.copy with sha1 checksum: (drift-aware)
     COPY dir        -> stamped shell: tree sha256 check + cp -a
     ADD  url dest   -> ansible.builtin.get_url (stamp pair)
     ADD  archive    -> stamped shell: tar -xf into dest
@@ -69,8 +69,8 @@ def env_assign(k: str, v: str) -> str:
     return f"{k}={v}"
 
 
-def file_sha256(p: Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+def file_sha1(p: Path) -> str:
+    return hashlib.sha1(p.read_bytes()).hexdigest()
 
 
 def tree_sha256(d: Path) -> str:
@@ -142,13 +142,17 @@ def compile_tasks(machinefile: Path, context: Path,
             return
         # Native convergent copy: checksum binds the layer hash to the
         # source bytes (content edit = Docker COPY cache invalidation),
-        # and remote transfers verify integrity with it.
+        # and remote transfers verify integrity with it. The copy module
+        # verifies the staged source against this value with its OWN
+        # SHA1, so it must be a bare sha1 hex digest: anything else
+        # (a sha256, or a "sha256:" prefix) fails every real transfer
+        # with "Copied file does not match the expected checksum".
         mode = f"{f.stat().st_mode & 0o777:04o}"
         add("ansible.builtin.copy", {
             "src": str(f),
             "dest": dest,
             "mode": mode,
-            "checksum": f"sha256:{file_sha256(f)}",
+            "checksum": file_sha1(f),
         }, entry)
 
     for entry in structure:

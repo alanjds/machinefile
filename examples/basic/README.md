@@ -8,6 +8,6 @@ Compile it:
 
     machine examples/basic/Machinefile
 
-The COPY'd udev rule lives in `config/`; its sha256 is embedded in the
-generated step, so editing the rule changes that step and everything
+The COPY'd udev rule lives in `config/`; its sha1 checksum is embedded in
+the generated step, so editing the rule changes that step and everything
 after it (layer-cache semantics).

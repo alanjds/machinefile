@@ -325,6 +325,21 @@ class TestAnsibleExecution:
         assert r2.returncode == 0, r2.stdout + r2.stderr
         assert self.changed(r2.stdout) == 0, "second apply must be a full skip"
 
+    def test_copy_file_layer_converges(self, tmp_path):
+        # Regression: the emitted checksum must be a BARE sha1 digest;
+        # anything else fails every real transfer with "Copied file does
+        # not match the expected checksum" (copy verifies src with sha1).
+        wf = self.sandbox(tmp_path)
+        (wf.parent / "f.txt").write_text("payload\n")
+        wf.write_text(f"FROM scratch\nCOPY f.txt {tmp_path}/ctx/opt/copied.txt\n")
+        r1 = run_playbook(plan(wf), tmp_path)
+        assert r1.returncode == 0, r1.stdout + r1.stderr
+        assert (tmp_path / "ctx" / "opt" / "copied.txt").read_text() == "payload\n"
+        assert self.changed(r1.stdout) == 1
+        r2 = run_playbook(plan(wf), tmp_path)
+        assert r2.returncode == 0, r2.stdout + r2.stderr
+        assert self.changed(r2.stdout) == 0, "COPY must converge natively"
+
     def test_append_skips_past_layers(self, tmp_path):
         wf = self.sandbox(tmp_path)
         assert run_playbook(plan(wf), tmp_path).returncode == 0
