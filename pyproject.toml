@@ -5,6 +5,7 @@ description = "Compile a Machinefile (Dockerfile-syntax) into an Ansible playboo
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
+authors = [{ name = "Alan Justino", email = "alan.justino@yahoo.com.br" }]
 license-files = ["LICENSE"]
 keywords = ["machinefile", "ansible", "dockerfile", "provisioning", "reproducible"]
 classifiers = [
@@ -26,6 +27,11 @@ ansible = ["ansible-core>=2.21.5"]
 
 [project.scripts]
 machine = "machinefile.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alanjds/machinefile"
+Source = "https://github.com/alanjds/machinefile"
+Issues = "https://github.com/alanjds/machinefile/issues"
 
 [dependency-groups]
 dev = [
